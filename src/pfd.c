@@ -29,6 +29,9 @@
 
 #include "pfd.h"
 #include <math.h>
+#ifdef __MIC__
+#include <immintrin.h>
+#endif
 #include "atomic_ops.h"
 
 volatile ticks** pfd_store;
@@ -47,7 +50,12 @@ pfd_store_init(uint32_t num_entries)
     {
       pfd_store[i] = (ticks*) malloc(num_entries * sizeof(ticks));
       assert(pfd_store[i] != NULL);
+#ifndef __MIC__
       PREFETCHW((void*) &pfd_store[i][0]);
+#else
+      _mm_prefetch((void *)&pfd_store[i][0], _MM_HINT_T1); // vprefetch1
+       _mm_prefetch((void *)&pfd_store[i][0], _MM_HINT_T0);
+#endif
     }
 
   int32_t tries = 10;

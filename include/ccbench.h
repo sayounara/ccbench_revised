@@ -49,7 +49,9 @@
 #include <assert.h>
 #include <float.h>
 #include <getopt.h>
-
+#ifdef __MIC__
+#include <xmmintrin.h>
+#endif
 #if defined(__amd64__)
 #  include <emmintrin.h>
 #elif defined(__tile__)

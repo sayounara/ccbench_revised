@@ -5,10 +5,18 @@ CFLAGS = -O3 -Wall
 LDFLAGS = -lm -lrt
 VER_FLAGS = -D_GNU_SOURCE
 
-ifeq ($(VERSION),DEBUG) 
-CFLAGS =  -O0 -ggdb -Wall -g  -fno-inline
+#ifeq ($(VERSION),DEBUG) 
+#CFLAGS =  -O0 -ggdb -Wall -g  -fno-inline
+#endif
+ifeq ($(VERSION),MIC) 
+PLATFORM = MIC
+CFLAGS = -mmic -O3 -Wall -DMIC -g
+CC = icc
+else
+PLATFORM = XEON
+CC = gcc
+PLATFORM_NUMA = 1
 endif
-
 UNAME := $(shell uname -n)
 
 ifeq ($(UNAME), lpd48core)
@@ -17,11 +25,11 @@ CC = gcc
 PLATFORM_NUMA = 1
 endif
 
-ifeq ($(UNAME), diassrv8)
-PLATFORM = XEON
-CC = gcc
-PLATFORM_NUMA = 1
-endif
+#ifeq ($(UNAME), localhost.localdomain)#our sever's hostname
+#PLATFORM = XEON
+#CC = gcc
+#PLATFORM_NUMA = 1
+#endif
 
 ifeq ($(UNAME), maglite)
 PLATFORM = NIAGARA

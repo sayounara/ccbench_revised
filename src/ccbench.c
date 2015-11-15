@@ -89,8 +89,9 @@ main(int argc, char **argv)
     }
 #endif
 
-#if defined(XEON)
-  set_cpu(1);
+#if defined(XEON)//从我们服务器的core的拓扑结构看，core也是从0开始编号的。
+//  set_cpu(1);
+  set_cpu(0);
 #else
   set_cpu(0);
 #endif
@@ -401,9 +402,18 @@ main(int argc, char **argv)
     {
       if (test_flush)
 	{
-	  _mm_mfence();
-	  _mm_clflush((void*) cache_line);
-	  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
+#ifndef __MIC__
+	  _mm_clflush((void*) (cache_line + cl));
+#else
+	  _mm_clevict((void*)(cache_line+cl),_MM_HINT_T0);
+	  _mm_clevict((void*)(cache_line+cl),_MM_HINT_T1);
+#endif
+#ifndef __MIC__
+    _mm_mfence();
+#endif
 	}
 
       B0;			/* BARRIER 0 */
@@ -741,7 +751,9 @@ main(int argc, char **argv)
 	      case 1:
 		B1;		/* BARRIER 1 */
 		sum += tas(cache_line, reps);
-		_mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
 		cache_line->word[0] = 0;
 		B2;		/* BARRIER 2 */
 		break;
@@ -819,7 +831,9 @@ main(int argc, char **argv)
 		if (!test_ao_success)
 		  {
 		    cache_line->word[0] = 0xFFFFFFFF;
-		    _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
 		  }
 		B1;		/* BARRIER 1 */
 		break;
@@ -1026,7 +1040,9 @@ main(int argc, char **argv)
 	  if (ID < 2)
 	    {
 	      PFDI(0);
-	      _mm_lfence();
+#ifndef __MIC__
+    _mm_lfence();
+#endif
 	      PFDO(0, reps);
 	    }
 	  break;
@@ -1034,7 +1050,9 @@ main(int argc, char **argv)
 	  if (ID < 2)
 	    {
 	      PFDI(0);
-	      _mm_sfence();
+#ifndef __MIC__
+    _mm_sfence();
+#endif
 	      PFDO(0, reps);
 	    }
 	  break;
@@ -1042,7 +1060,9 @@ main(int argc, char **argv)
 	  if (ID < 2)
 	    {
 	      PFDI(0);
-	      _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
 	      PFDO(0, reps);
 	    }
 	  break;
@@ -1454,7 +1474,12 @@ cas(volatile cache_line_t* cl, volatile uint64_t reps)
   volatile uint32_t r;
 
   PFDI(0);
+#ifndef __MIC__
   r = CAS_U32(cl->word, o, no);
+#else
+  volatile uint32_t *t1=cl->word;
+   r = CAS_U32(t1, o, no);
+#endif
   PFDO(0, reps);
 
   return (r == o);
@@ -1466,8 +1491,13 @@ cas_no_pf(volatile cache_line_t* cl, volatile uint64_t reps)
   uint8_t o = reps & 0x1;
   uint8_t no = !o; 
   volatile uint32_t r;
+//  r = CAS_U32(cl->word, o, no);
+#ifndef __MIC__
   r = CAS_U32(cl->word, o, no);
-
+#else
+  volatile uint32_t *t1=cl->word;
+   r = CAS_U32(t1, o, no);
+#endif
   return (r == o);
 }
 
@@ -1484,7 +1514,13 @@ cas_0_eventually(volatile cache_line_t* cl, volatile uint64_t reps)
       cln = clrand();
       volatile cache_line_t* cl1 = cl + cln;
       PFDI(0);
-      r = CAS_U32(cl1->word, o, no);
+//      r = CAS_U32(cl1->word, o, no);
+#ifndef __MIC__
+  r = CAS_U32(cl1->word, o, no);
+#else
+  volatile uint32_t *t1=cl1->word;
+   r = CAS_U32(t1, o, no);
+#endif
       PFDO(0, reps);
     }
   while (cln > 0);
@@ -1503,7 +1539,13 @@ fai(volatile cache_line_t* cl, volatile uint64_t reps)
       cln = clrand();
       volatile cache_line_t* cl1 = cl + cln;
       PFDI(0);
-      t = FAI_U32(cl1->word);
+//      t = FAI_U32(cl1->word);
+#ifndef __MIC__
+  t= FAI_U32(cl1->word);
+#else
+  volatile uint32_t *t1=cl1->word;
+   t = FAI_U32(t1);
+#endif
       PFDO(0, reps);
     }
   while (cln > 0);
@@ -1552,7 +1594,9 @@ swap(volatile cache_line_t* cl, volatile uint64_t reps)
     }
   while (cln > 0);
 
-  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
   return res;
 }
 
@@ -1569,14 +1613,18 @@ store_0(volatile cache_line_t* cl, volatile uint64_t reps)
     {
       PFDI(0);
       cl->word[0] = reps;
-      _mm_sfence();
+#ifndef __MIC__
+    _mm_sfence();
+#endif
       PFDO(0, reps);
     }
   else if (test_sfence == 2)
     {
       PFDI(0);
       cl->word[0] = reps;
-      _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
       PFDO(0, reps);
     }
 }
@@ -1587,11 +1635,15 @@ store_0_no_pf(volatile cache_line_t* cl, volatile uint64_t reps)
   cl->word[0] = reps;
   if (test_sfence == 1)
     {
-      _mm_sfence();
+#ifndef __MIC__
+    _mm_sfence();
+#endif
     }
   else if (test_sfence == 2)
     {
-      _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
     }
 }
 
@@ -1605,7 +1657,9 @@ store_0_eventually_sf(volatile cache_line_t* cl, volatile uint64_t reps)
       volatile uint32_t *w = &cl[cln].word[0];
       PFDI(0);
       w[0] = cln;
-      _mm_sfence();
+#ifndef __MIC__
+    _mm_sfence();
+#endif
       PFDO(0, reps);
     }
   while (cln > 0);
@@ -1621,7 +1675,9 @@ store_0_eventually_mf(volatile cache_line_t* cl, volatile uint64_t reps)
       volatile uint32_t *w = &cl[cln].word[0];
       PFDI(0);
       w[0] = cln;
-      _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
       PFDO(0, reps);
     }
   while (cln > 0);
@@ -1691,7 +1747,9 @@ store_0_eventually_pfd1_sf(volatile cache_line_t* cl, volatile uint64_t reps)
       volatile uint32_t *w = &cl[cln].word[0];
       PFDI(1);
       w[0] = cln;
-      _mm_sfence();
+#ifndef __MIC__
+    _mm_sfence();
+#endif
       PFDO(1, reps);
     }
   while (cln > 0);
@@ -1707,7 +1765,9 @@ store_0_eventually_pfd1_mf(volatile cache_line_t* cl, volatile uint64_t reps)
       volatile uint32_t *w = &cl[cln].word[0];
       PFDI(1);
       w[0] = cln;
-      _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
       PFDO(1, reps);
     }
   while (cln > 0);
@@ -1758,7 +1818,9 @@ load_0_eventually_lf(volatile cache_line_t* cl, volatile uint64_t reps)
       volatile uint32_t* w = &cl[cln].word[0];
       PFDI(0);
       val = w[0];
-      _mm_lfence();
+#ifndef __MIC__
+    _mm_lfence();
+#endif
       PFDO(0, reps);
     }
   while (cln > 0);
@@ -1777,7 +1839,9 @@ load_0_eventually_mf(volatile cache_line_t* cl, volatile uint64_t reps)
       volatile uint32_t* w = &cl[cln].word[0];
       PFDI(0);
       val = w[0];
-      _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
       PFDO(0, reps);
     }
   while (cln > 0);
@@ -1819,7 +1883,9 @@ load_0_eventually(volatile cache_line_t* cl, volatile uint64_t reps)
     {
       val = load_0_eventually_mf(cl, reps);
     }
-  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
   return val;
 }
 
@@ -1836,7 +1902,9 @@ load_0_eventually_no_pf(volatile cache_line_t* cl)
     }
   while (cln > 0);
 
-  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
   return sum;
 }
 
@@ -1847,7 +1915,9 @@ load_0_lf(volatile cache_line_t* cl, volatile uint64_t reps)
   volatile uint32_t* p = (volatile uint32_t*) &cl->word[0];
   PFDI(0);
   val = p[0];
-  _mm_lfence();
+#ifndef __MIC__
+    _mm_lfence();
+#endif
   PFDO(0, reps);
   return val;
 }
@@ -1859,7 +1929,9 @@ load_0_mf(volatile cache_line_t* cl, volatile uint64_t reps)
   volatile uint32_t* p = (volatile uint32_t*) &cl->word[0];
   PFDI(0);
   val = p[0];
-  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
   PFDO(0, reps);
   return val;
 }
@@ -1892,7 +1964,9 @@ load_0(volatile cache_line_t* cl, volatile uint64_t reps)
     {
       val = load_0_mf(cl, reps);
     }
-  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
   return val;
 }
 
@@ -1905,7 +1979,9 @@ load_next_lf(volatile uint64_t* cl, volatile uint64_t reps)
   for (i = 0; i < do_reps; i++)
     {
       cl = (uint64_t*) *cl;
-      _mm_lfence();
+#ifndef __MIC__
+    _mm_lfence();
+#endif
     }
   PFDOR(0, reps, do_reps);
   return *cl;
@@ -1921,7 +1997,9 @@ load_next_mf(volatile uint64_t* cl, volatile uint64_t reps)
   for (i = 0; i < do_reps; i++)
     {
       cl = (uint64_t*) *cl;
-      _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
     }
   PFDOR(0, reps, do_reps);
   return *cl;
@@ -1967,7 +2045,9 @@ invalidate(volatile cache_line_t* cl, uint64_t index, volatile uint64_t reps)
   PFDI(0);
   _mm_clflush((void*) (cl + index));
   PFDO(0, reps);
-  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
 }
 
 static size_t
@@ -2070,7 +2150,12 @@ cache_line_open()
       for (cl = 0; cl < test_cache_line_num; cl++)
 	{
 	  cache_line[cl].word[0] = 0;
+#ifndef __MIC__
 	  _mm_clflush((void*) (cache_line + cl));
+#else
+	  _mm_clevict(( void*)(cache_line+cl),_MM_HINT_T0);
+	  _mm_clevict(( void*)(cache_line+cl),_MM_HINT_T1);
+#endif
 	}
 
       if (test_test == LOAD_FROM_MEM_SIZE)
@@ -2081,7 +2166,9 @@ cache_line_open()
 
     }
 
-  _mm_mfence();
+#ifndef __MIC__
+    _mm_mfence();
+#endif
   return cache_line;
 }
 
